@@ -1,0 +1,110 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report, accuracy_score
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Conv1D, Dense, Flatten, Dropout, MaxPooling1D
+file_path = '/content/MIT-BIH Arrhythmia Database (1).csv'  # Replace with the uploaded file name
+
+# Read the data and handle '?' as missing values (NaN)
+df = pd.read_csv(file_path)
+
+
+# Assuming 'record' is not a feature and 'type' is the label
+X = df.drop(columns=['record', 'type'])  # Drop non-feature columns
+y = df['type']  # Target column (class labels)
+
+# Handle missing values (if any)
+X = X.fillna(X.mean())
+
+# Train-Test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Standardize the features (important for neural networks)
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Reshape data for 1D CNN (samples, time steps, features)
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+# Encode target labels if not numeric
+if y_train.dtype == 'object':
+    y_train = pd.get_dummies(y_train).values
+    y_test = pd.get_dummies(y_test).values
+
+# Define the 1D CNN model
+model = Sequential([
+    Conv1D(64, kernel_size=3, activation='relu', input_shape=(X_train.shape[1], 1)),
+    MaxPooling1D(pool_size=2),
+    Dropout(0.3),
+    Conv1D(128, kernel_size=3, activation='relu'),
+    MaxPooling1D(pool_size=2),
+    Dropout(0.3),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.3),
+    Dense(y_train.shape[1], activation='softmax')  # Multi-class classification
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Train the CNN model
+model.fit(X_train, y_train, epochs=20, batch_size=32, validation_split=0.2, verbose=1)
+
+# Make predictions
+y_pred = model.predict(X_test)
+y_pred_classes = np.argmax(y_pred, axis=1)
+y_true_classes = np.argmax(y_test, axis=1)
+
+# Evaluate performance
+print("Accuracy:", accuracy_score(y_true_classes, y_pred_classes))
+print("Classification Report:\n", classification_report(y_true_classes, y_pred_classes))
+# Generate the confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+print("Confusion Matrix:\n", cm)
+
+# Create a figure with subplots for confusion matrix and classification report
+fig, ax = plt.subplots(2, 1, figsize=(8, 14))  # Create a 2-row plot
+
+# Plot the confusion matrix with a darker color scheme and grid
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False, linewidths=2, linecolor='black', ax=ax[0])
+ax[0].set_xlabel('Predicted')
+ax[0].set_ylabel('Actual')
+ax[0].set_title(f'Confusion Matrix\nAccuracy: {accuracy:.2f}')
+
+# Generate the classification report as a dictionary
+report = classification_report(y_test, y_pred, output_dict=True)
+
+# Convert the classification report to a DataFrame for easy plotting
+report_df = pd.DataFrame(report).transpose()
+
+# Create a table for the classification report
+ax[1].axis('off')  # Hide the second subplot axes
+table = ax[1].table(cellText=report_df.round(2).values,
+                    colLabels=report_df.columns,
+                    rowLabels=report_df.index,
+                    cellLoc='center',
+                    loc='center')
+
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1.2, 1.2)  # Adjust table size
+
+# Add full forms of the labels as text below the table
+text = """
+F - Fusion beat
+N - Normal beat
+Q - Unknown beat
+SVEB - Supraventricular ectopic beat
+VEB - Ventricular ectopic beat
+"""
+plt.figtext(0.2, 0.2, text, wrap=True, horizontalalignment='left', fontsize=10)
+
+# Adjust layout
+plt.tight_layout()
+plt.subplots_adjust(bottom=0.15)  # Adjust to make space for text at the bottom
+plt.show()
