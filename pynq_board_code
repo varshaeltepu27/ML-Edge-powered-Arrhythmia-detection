@@ -1,0 +1,36 @@
+import numpy as np
+import pandas as pd
+import tflite_runtime.interpreter as tflite
+
+# Load the TFLite model
+interpreter = tflite.Interpreter(model_path='model (1).tflite')
+interpreter.allocate_tensors()
+
+# Get input and output details
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# Load test data (multiple rows, each one sample)
+df = pd.read_excel('Testmitbih.xlsx', header=None)
+
+# Define class label mapping
+label_map = {
+    0: "Fusion beat (F)",
+    1: "Normal beat (N)",
+    2: "Unknown beat (Q)",
+    3: "Supraventricular ectopic beat (SVEB)",
+    4: "Ventricular ectopic beat (VEB)"
+}
+
+# Iterate through each row (sample)
+for i, row in df.iterrows():
+    sample = row.values.astype(np.float32)
+    sample = (sample - np.mean(sample)) / np.std(sample)  # Normalize
+    sample = sample.reshape(1, len(sample), 1)  # Match input shape
+
+    interpreter.set_tensor(input_details[0]['index'], sample)
+    interpreter.invoke()
+    output = interpreter.get_tensor(output_details[0]['index'])
+    predicted_class = np.argmax(output, axis=1)[0]
+
+    print(f"Sample {i+1}: Predicted -> {label_map.get(predicted_class, 'Unknown')}")
